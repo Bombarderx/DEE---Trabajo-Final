@@ -1,0 +1,712 @@
+---
+title: "Análisis espacial del tabaquismo en España, distribución, causas, y consecuencias"
+author: "Enric Serrano Peris"
+date: "`r Sys.Date()`"
+output: pdf_document
+knitr:
+  opts_chunk:
+    echo: false
+    warning: false
+    message: false
+---
+
+\begin{center}
+\includegraphics[width=0.4\textwidth]{data/escutmeslogoinferior_UV_2linies.jpg}
+\end{center}
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+## Resumen
+
+El tabaquismo sigue siendo una de las principales causas de mortalidad prematura en España. Este trabajo de investigación aborda la complejidad del consumo de tabaco desde una perspectiva espacial, explorando cómo la distribución territorial del hábito influye en los indicadores de salud pública y cómo se articula con la oferta comercial de tabaco.
+
+El objetivo principal es identificar patrones de autocorrelación espacial en el consumo de tabaco y la mortalidad asociada con un análisis microespacial detallado en la ciudad de Valencia a nivel autonómico, complementado con una visión autonómica. Para ello, se ha construido una base de datos propia a través de la geocodificación de los puntos de venta (estancos y PVR), integrándola con datos sociodemográficos y de salud. Se han aplicado indicadores de asociación espacial global (I de Moran) y local (LISA) mediante el entorno estadístico R para detectar clústeres significativos y dependencias geográficas.
+
+Los resultados evidencian la existencia de estructuras espaciales reconocibles en la distribución del consumo, aunque la relación con la mortalidad a nivel agregado presenta complejidades que limitan la detección de una correlación lineal directa. Por otro lado, el análisis urbano en Valencia revela una segregación espacial en la densidad de los puntos de venta, sugiriendo una vinculación con variables de renta media censal. Estas conclusiones subrayan la necesidad de integrar la dimensión geográfica en el diseño de estrategias de prevención y control del tabaquismo, permitiendo un enfoque más eficiente y orientado a los territorios con mayor vulnerabilidad social.
+
+\newpage
+
+## Introducción
+
+El tabaquismo sigue siendo uno de los problemas de salud pública más relevantes en España. En 2016, el consumo de tabaco fue responsable de 56.124 muertes, de las cuales la mitad correspondieron a tumores, siendo el cáncer de pulmón el protagonista del 65 % de estos casos (Córdoba-García et al., 2020). Aunque la prevalencia ha ido bajando con los años, las proyecciones apuntan a que no se esperan reducciones sustanciales en la mortalidad atribuida al tabaquismo durante la próxima década (Fernández et al., 2021).
+
+Lo que resulta especialmente interesante desde una perspectiva espacial es que el consumo de tabaco no se distribuye de manera uniforme ni entre personas ni entre territorios. En España, el inicio y el abandono del hábito tabáquico presentan diferencias sociales apreciables, siendo el consumo mayor en los grupos socioeconómicamente más desfavorecidos (Fernández et al., 2021). Esta desigualdad plantea una pregunta que la literatura internacional lleva años tratando de responder: ¿tiene algo que ver con ello la mayor presencia de puntos de venta de tabaco en las zonas más pobres?
+
+La evidencia disponible sugiere que sí. En Escocia, Shortt et al. (2015) encontraron una relación lineal positiva entre la privación socioeconómica de un barrio y la densidad de puntos de venta de tabaco, de modo que el quintil más deprimido concentraba las mayores densidades y el menos deprimido las menores. Este mismo patrón se ha documentado en Alemania, Australia y Estados Unidos. La explicación no es trivial: una mayor densidad de puntos de venta no solo incrementa la oferta, sino que también aumenta la visibilidad de las marcas, genera competencia local que reduce precios y refuerza normas sociales favorables al consumo (Lees et al., 2021).
+
+Desde un punto de vista metodológico, la revisión sistemática más completa sobre el tema concluye que una mayor densidad de puntos de venta se asocia con mayor prevalencia de tabaquismo en el 76% de los estudios analizados, mayor inicio del consumo en el 64% y peores resultados de abandono en el 85% de los casos, recomendando además el uso de estimaciones de densidad kernel o ponderadas por población en lugar de simples recuentos administrativos (Lees et al., 2021).
+
+España presenta, además, una particularidad estructural que la distingue del resto de países estudiados: la comercialización de tabaco está regulada y restringida a las expendedurías autorizadas por el Comisionado para el Mercado de Tabacos y a los Puntos de Venta al por menor (PVR). Esto significa que la localización de los puntos de venta no responde únicamente a la demanda, sino también a un sistema de concesiones administrativas. La pregunta que surge, por tanto, es si incluso bajo este modelo regulado persisten desigualdades territoriales en la exposición al tabaco.
+
+El único trabajo que aborda la dimensión espacial del tabaco en España a escala provincial es el de Almeida et al. (2020), quienes aplicaron el índice de Moran a datos de consumo per cápita de las 47 provincias entre 2002 y 2017, identificando clústeres de bajo consumo en zonas fronterizas con Gibraltar y de alto consumo en las limítrofes con Francia, atribuyendo este patrón a diferenciales de precio entre países. Sin embargo, este trabajo no analiza la distribución de los puntos de venta ni su relación con variables de renta o mortalidad, limitándose a la escala provincial.
+
+El presente trabajo propone ampliar ese análisis en dos direcciones. Por un lado, a escala de sección censal en la ciudad de Valencia, donde la disponibilidad de datos de renta del Atlas del INE permite contrastar si los barrios más pobres concentran una mayor densidad relativa de puntos de venta, tal y como sugiere la evidencia internacional (Shortt et al., 2015; Lees et al., 2021.) Por otro, a escala de comunidad autónoma para toda España, analizando si existe autocorrelación espacial en los hábitos de tabaquismo y si estos se corresponden territorialmente con la mortalidad por enfermedades directamente asociadas al consumo de tabaco.
+\newpage
+
+## Metodología
+
+El presente trabajo combina dos escalas de análisis geoespacial: una escala micro a nivel de sección censal para la ciudad de Valencia, y una escala macro a nivel de comunidad autónoma. Para ello se han utilizado cinco fuentes de datos principales, que se describen a continuación junto con el proceso de obtención, tratamiento y análisis aplicado a cada una.
+
+### Fuentes de datos
+
+La primera fuente es el **[listado de expendedurías de tabaco](https://serviciostelematicosext.hacienda.gob.es/CMT/Visor/csvExpendedurias.aspx)** y **[Puntos de Venta al por menor (PVR)](https://serviciostelematicosext.hacienda.gob.es/CMT/Visor/csvPVR.aspx)** del Comisionado para el Mercado de Tabacos, dependiente del Ministerio de Hacienda. Ambos listados están disponibles para descarga pública en formato CSV y recogen, respectivamente, los 12.531 estancos y los 94.065 PVRs activos en territorio nacional en el momento de la descarga, realizada el 28 mayo de 2026. Cada registro incluye el código identificador del establecimiento, municipio, localidad y dirección postal, pero no coordenadas geográficas.
+
+La segunda fuente es el **[Atlas de Distribución de Renta de los Hogares del Instituto Nacional de Estadística (INE)](https://www.ine.es/jaxiT3/Tabla.htm?t=53776)**, edición 2023, que proporciona la renta neta media por persona desagregada a nivel de sección censal para todo el territorio nacional. Para el presente análisis se ha utilizado la descarga correspondiente a la provincia de Valencia, que incluye 134.082 registros a nivel de sección censal.
+
+La tercera fuente es la **[Encuesta de Salud de España 2023 (ESdE 2023)](https://www.sanidad.gob.es/estadEstudios/estadisticas/encuestaSaludEspana/ESdE2023/ESdE2023_MOD3_REL.xlsx)**, elaborada por el Ministerio de Sanidad. En concreto, se ha utilizado la Tabla 3.015, que recoge el porcentaje de fumadores, exfumadores y no fumadores por comunidad autónoma y sexo para la población de 15 y más años; así como la Tabla 3.022, la cual informa acerca de la cantidad de cigarros consumidos diariamente por fumadores regulares.
+
+La cuarta fuente es la **[Estadística de Defunciones según la Causa de Muerte del Instituto Nacional de Estadística (INE)](https://www.ine.es/jaxi/Tabla.htm?tpx=72061&L=0)** que recoge el número de defunciones por causa y provincia de residencia del fallecido. Para el presente análisis se seleccionaron los datos del año 2023 y las causas directamente asociadas al tabaquismo: tumor maligno de la tráquea, bronquios y pulmón (causa 018), tumor maligno de la laringe (causa 017) y enfermedades crónicas de las vías respiratorias inferiores, excluyendo el asma (causa 064), que incluye la Enfermedad Pulmonar Obstructiva Crónica (EPOC). Las defunciones por provincia fueron posteriormente agregadas a nivel de comunidad autónoma y normalizadas por población residente según la quinta fuente, el **[Censo Anual de Población del INE](https://www.ine.es/jaxiT3/Tabla.htm?t=67988)** para el mismo año, obteniendo una tasa de mortalidad por cada 100.000 habitantes.
+
+### Geocodificación
+
+Dado que ninguna de las dos bases de datos de puntos de venta incluye coordenadas geográficas, fue necesario geocodificar ambos conjuntos. Previamente, se realizó un proceso de normalización de las direcciones postales, sustituyendo abreviaturas frecuentes (C. -> CALLE, AV. -> AVENIDA) y eliminando puntos intermedios que podían dificultar el reconocimiento de la dirección. Además, y con el objetivo de mejorar la precisión de los resultados, se construyó una query de geocodificación completa concatenando dirección, municipio, provincia y país, dado que las direcciones del CSV original no incluían contexto geográfico suficiente para su desambiguación.
+
+Para los estancos se utilizó la API de Google Maps Geocoding a través del paquete tidygeocoder de R. El proceso se realizó por lotes de 500 registros con guardado intermedio, incorporando un mecanismo de control de errores mediante tryCatch para garantizar la robustez del proceso ante respuestas incompletas de la API.
+
+De los 12.549 estancos geocodificados, 9.290 obtuvieron precisión ROOFTOP (coordenadas a nivel de portal exacto) y 503 precisión RANGE_INTERPOLATED (interpolación sobre el tramo de calle). Los 1.163 resultados con precisión GEOMETRIC_CENTER (centro geométrico de la calle o manzana) y los 1.575 APPROXIMATE (coordenadas aproximadas a nivel de barrio o zona) presentan un margen de error posicional que puede comprometer la asignación correcta a nivel de sección censal. Por ello, para el análisis micro en Valencia se filtraron únicamente los registros de alta precisión (ROOFTOP y RANGE_INTERPOLATED), que representan el 78,3% del total.
+
+Para los 94.065 PVRs se utilizó el geocodificador de ArcGIS, también a través de tidygeocoder, por razones de viabilidad económica dado el volumen de registros. ArcGIS utiliza como base cartográfica los datos del IGN y el Catastro español, lo que garantiza una cobertura adecuada para el territorio nacional. Similarmente a los estancos, se eliminó para el análisis censal las geocodificaciones menos precisas.
+
+El código de la geocodificación se puede consultar en el **[Anexo I](https://github.com/Bombarderx/DEE---Trabajo-Final)**. Del mismo modo, se puede consultar la distribución de las Expendurías de Tabaco y Timbre y PVR en el **[Anexo III](https://github.com/Bombarderx/DEE---Trabajo-Final)**.
+
+### Análisis espacial
+
+El análisis se estructura en dos bloques correspondientes a las dos escalas de estudio.
+
+A escala de sección censal en Valencia, se realizó un proceso de asignación espacial mediante st_join() entre los puntos de venta geocodificados y los polígonos de secciones censales del INE, calculando la densidad de puntos de venta por habitante en cada sección. Esta variable se relacionó con la renta neta media del Atlas del INE mediante correlación espacial y análisis LISA, con el objetivo de contrastar si las secciones censales de menor renta presentan una mayor concentración relativa de puntos de venta, en línea con la hipótesis planteada por Shortt et al. (2015) y Lees et al. (2021).
+
+A escala de comunidad autónoma, el análisis se centró en la relación espacial entre los hábitos de tabaquismo y la mortalidad por enfermedades asociadas. A partir de la ESdE 2023 se construyó un índice de tabaquismo compuesto por la prevalencia de fumadores activos y una medida ponderada de la intensidad de consumo diario, ambas estandarizadas antes de su agregación. Este índice se cruzó con la tasa de mortalidad por enfermedades pulmonares asociadas al tabaco mediante el cálculo del índice de Moran global bivariante y el análisis LISA, con el objetivo de identificar si las comunidades autónomas con mayor tabaquismo presentan también mayor mortalidad asociada en su entorno geográfico. Dado que los territorios insulares y las ciudades autónomas de Ceuta y Melilla carecen de vecinos por contigüidad, el análisis de autocorrelación espacial se restringió a las comunidades autónomas peninsulares, lo que constituye una limitación metodológica a tener en cuenta en la interpretación de los resultados.
+
+Todo el análisis fue realizado en R, utilizando principalmente los paquetes *sf*, *tidyverse*, *spdep*, *spatstat*, *tidygeocoder*, *rgeoda*, *tmap* y *mapSpain*.
+
+El código del Análisis espacial se puede consultar en el **[Anexo II](https://github.com/Bombarderx/DEE---Trabajo-Final).**
+
+\newpage
+
+## Resultados
+
+```{r}
+# Cargamos las siguientes librerías (asumimos que ya estan instaladas):
+library(sf) # Para el tratamiento de objetos espaciales
+library(tidyverse) # para la limpieza, transformacion y represetnacion
+library(knitr) # Para el renderizado de tablas via kable()
+library(tidygeocoder) # Para la geocodificacion
+library(mapSpain) # Para cargar el listado de municipios de España
+library(leaflet) # Para la graficación
+library(RColorBrewer) # Para paletas de colores
+library(patchwork) # Para unir graficos
+library(spdep) # Para el análisis Moran y LISA
+library(rgeoda) # Para LISA
+library(tmap) # Para graficar mapas LISA
+library(RColorBrewer) # Para graficar mapas LISA
+library(sfdep) # Para analisis bivariante
+library(stringi) # Para quitar acentos
+library(readxl) # Para leer .xlsx
+```
+
+
+```{r}
+# Cargamos los databases geocodificados
+load("./data/geocode_final.Rdata")
+load("./data/pvr_geocode_final.Rdata")
+renta <- read.csv("./data/Renta_vlc.csv", sep = ";")
+censos <- st_read("./data/censos_ine.geojson", quiet = T)
+defunciones <- read.csv("./data/defunciones_prov_2023.csv", sep = ";")
+pob <- read.csv("./data/Poblacion_provsyccaas.csv", sep = ";")
+esde_tipos <- read_excel("./data/ESdE2023_MOD3_REL.xlsx", 
+                   sheet = "Tabla 3.015",
+                   skip = 6)
+esde_cant <- read_excel("./data/ESdE2023_MOD3_REL.xlsx", 
+                   sheet = "Tabla 3.022",
+                   skip = 6)
+
+# Cargamos mapa de España
+espana <- esp_get_spain(epsg = 4326, moveCAN = T)
+
+# Eliminamos variables innecesarias y no interesantes
+df_geocodificado <- df_geocodificado %>% 
+  select(Estanco, lat, long, address, formatted_address, geometry.location_type, partial_match)
+
+pvr_geocodificado <- pvr_geocodificado %>% 
+  select(Nombre, address, lat, long, arcgis_address, attributes.Postal, attributes.Addr_type, attributes.StPreType)
+
+```
+
+```{r}
+# Eliminamos dato chileno
+chile <- which(df_geocodificado$lat < 0)
+
+# df_geocodificado[chile,]
+
+# Insertamos manualmente
+df_geocodificado$lat[chile] <- 39.8665984964862
+df_geocodificado$long[chile] <- 4.031222602250235
+```
+
+
+```{r}
+### Mapa estancos
+
+# Convertimos dfs a sfs
+df_geocodificado <- st_as_sf(df_geocodificado, coords = c("long","lat"), crs = 4326)
+
+pvr_geocodificado <- st_as_sf(pvr_geocodificado, coords = c("long","lat"), crs = 4326)
+
+# Filtramos los datos no aproximados
+df_preciso <- subset(df_geocodificado, geometry.location_type == "ROOFTOP" |
+                                       geometry.location_type == "RANGE_INTERPOLATED")
+
+pvr_preciso <- subset(pvr_geocodificado, attributes.StPreType != "")
+
+```
+
+```{r}
+# MOVEMOS DATOS CANARIOS
+# Polígono de Canarias
+canarias_pol <- esp_get_ccaa(ccaa = "Canarias", epsg = 4326, moveCAN = F)
+
+# Función para mover solo puntos canarios
+mover_canarias <- function(df) {
+  idx <- st_intersects(df, canarias_pol, sparse = FALSE) %>% rowSums() > 0
+  df_can  <- df[idx, ]  %>% esp_move_can()
+  df_pen  <- df[!idx, ]
+  bind_rows(df_pen, df_can)
+}
+
+df_geocodificado  <- mover_canarias(df_geocodificado)
+df_preciso        <- mover_canarias(df_preciso)
+pvr_geocodificado <- mover_canarias(pvr_geocodificado)
+pvr_preciso       <- mover_canarias(pvr_preciso)
+```
+
+
+```{r}
+# Estancos y PVRs
+
+graf1 <- ggplot() +
+  geom_sf(data = espana) +
+  geom_sf(data = pvr_geocodificado, mapping = aes(color = "PVR"), alpha = 0.2, size = 0.8) +
+  geom_sf(data = df_geocodificado, mapping = aes(color = "Estancos"), alpha = 0.2, size = 0.8) +
+scale_color_manual(values = c("Estancos" = "red", "PVR" = "blue"))
+
+```
+
+
+```{r}
+# leemos geojson de secciones censales:
+
+# Cargamos y filtramos solo Valencia ciudad
+secciones_vlc <- st_read("./data/censos_ine.geojson", quiet = T) %>%
+  filter(INE_MUN== "46250") %>%
+  st_transform(crs = 4326)
+
+# Comprobamos
+  # nrow(secciones_vlc)
+  # plot(st_geometry(secciones_vlc))
+
+# Bounding box aproximado de Valencia ciudad
+vlc_bbox <- st_bbox(secciones_vlc)
+
+# Filtro rápido por bounding box (mucho más rápido que st_intersection)
+estancos_vlc <- df_preciso %>%
+  st_crop(vlc_bbox)
+
+pvr_vlc <- pvr_preciso %>%
+  st_crop(vlc_bbox)
+
+# Ahora sí la intersección, pero sobre muchos menos puntos
+estancos_vlc <- st_intersection(estancos_vlc, secciones_vlc)
+pvr_vlc      <- st_intersection(pvr_vlc, secciones_vlc)
+# Contamos puntos de venta por sección censal
+conteo_estancos <- estancos_vlc %>%
+  st_drop_geometry() %>%
+  count(ID_SECCION, name = "n_estancos")
+
+conteo_pvr <- pvr_vlc %>%
+  st_drop_geometry() %>%
+  count(ID_SECCION, name = "n_pvr")
+
+# Unimos los conteos a los polígonos de secciones censales
+secciones_vlc <- secciones_vlc %>%
+  left_join(conteo_estancos, by = "ID_SECCION") %>%
+  left_join(conteo_pvr,      by = "ID_SECCION") %>%
+  mutate(
+    n_estancos = replace_na(n_estancos, 0),
+    n_pvr      = replace_na(n_pvr, 0),
+    n_total    = n_estancos + n_pvr
+  )
+
+```
+
+```{r}
+# Filtramos renta neta media por persona 2023 a nivel de sección censal
+
+renta_vlc <- renta %>%
+  filter(
+    Indicadores.de.renta.media.y.mediana == "Renta neta media por persona",
+    Periodo == 2023,
+    !is.na(Secciones),
+    str_detect(Total, "[0-9]+") # Solo procesa filas que contengan al menos un numero
+  ) %>%
+  mutate(
+    ID_SECCION = str_extract(Secciones, "^[0-9]+"),
+    Total = as.numeric(str_replace_all(Total, "\\.", "") %>% 
+                       str_replace(",", "."))
+  ) %>%
+  select(ID_SECCION, renta_media = Total)
+
+# Unimos a secciones_vlc (LA SECCION CENSAL 4625017008 NO SE ENCUENTRA EN EL DF DE RENTAS, LO ELIMINAMOS)
+secciones_vlc <- secciones_vlc[secciones_vlc$ID_SECCION != 4625017008,] %>%
+  left_join(renta_vlc, by = "ID_SECCION")
+
+```
+
+```{r}
+# Quitamos la seccion de la albufera para mejor visualizacion
+secciones_vlc_red <- secciones_vlc %>%
+  filter(DISTRITO != 19)
+
+# Graficamos
+p1 <- ggplot() +
+  geom_sf(data = secciones_vlc_red, aes(fill = n_total), color = "white", linewidth = 0.1) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "Nº puntos\nde venta") +
+  theme_void()
+
+p2 <- ggplot() +
+  geom_sf(data = secciones_vlc_red, aes(fill = renta_media), color = "white", linewidth = 0.1) +
+  scale_fill_distiller(palette = "YlGn", direction = 1, name = "Renta media\n(€/persona)") +
+  theme_void()
+
+graf2 <- p1 + p2
+```
+
+```{r}
+
+# Matriz de pesos espaciales (contigüidad queen)
+vecinos <- poly2nb(secciones_vlc_red, queen = TRUE)
+pesos   <- nb2listw(vecinos, style = "W", zero.policy = TRUE)
+
+# Comprobamos si hay secciones sin vecinos
+# summary(vecinos)
+
+# Estandarizar las variables
+secciones_vlc_red_est <- secciones_vlc_red %>%
+  mutate(
+    z_puntos = scale(n_total)[,1],
+    z_renta  = scale(renta_media)[,1]
+  )
+
+# Moran global univariante de puntos de venta
+moran_puntos <- moran.test(secciones_vlc_red_est$n_total, pesos, zero.policy = TRUE)
+
+# Moran global univariante de renta
+moran_renta <- moran.test(secciones_vlc_red_est$renta_media, pesos, 
+                          na.action = na.omit, zero.policy = TRUE)
+```
+
+```{r}
+# Creamos funciones para mapas LISA y de significatidad
+match_palette <- function(patterns, classifications, colors){
+  classes_present <- base::unique(patterns)
+  mat <- matrix(c(classifications,colors), ncol = 2)
+  logi <- classifications %in% classes_present
+  pre_col <- matrix(mat[logi], ncol = 2)
+  pal <- pre_col[,2]
+  return(pal)
+}
+
+lisa_map <- function(df, lisa, alpha = .05) {
+  clusters <- lisa_clusters(lisa,cutoff = alpha)
+  labels <- lisa_labels(lisa)
+  pvalue <- lisa_pvalues(lisa)
+  colors <- lisa_colors(lisa)
+  lisa_patterns <- labels[clusters+1]
+  
+  pal <- match_palette(lisa_patterns,labels,colors)
+  labels <- labels[labels %in% lisa_patterns]
+  
+  df["lisa_clusters"] <- clusters
+  tm_shape(df) +
+    tm_fill("lisa_clusters", labels = labels, palette = pal, style = "cat") +
+    tm_borders(col = "gray50", lwd = 0.1)
+}
+
+significance_map <- function(df, lisa, permutations = 999, alpha = .05) {
+  pvalue <- lisa_pvalues(lisa)
+  target_p <- 1 / (1 + permutations)
+  potential_brks <- c(.00001, .0001, .001, .01)
+  brks <- potential_brks[which(potential_brks > target_p & potential_brks < alpha)]
+  brks2 <- c(target_p, brks, alpha)
+  labels <- c(as.character(brks2), "Not Significant")
+  brks3 <- c(0, brks2, 1)
+  
+  cuts <- cut(pvalue, breaks = brks3, labels = labels)
+  df["sig"] <- cuts
+  
+  pal <- rev(brewer.pal(length(labels), "Greens"))
+  pal[length(pal)] <- "#D3D3D3"
+  
+  tm_shape(df) +
+    tm_fill("sig", palette = pal) +
+    tm_borders(col = "gray50", lwd = 0.1)
+
+}
+```
+
+```{r}
+# Matriz de pesos espaciales con rgeoda
+pesos_geoda <- queen_weights(secciones_vlc_red_est)
+
+# LISA univariante de puntos de venta
+lisa_puntos <- rgeoda::local_moran(pesos_geoda, 
+                           secciones_vlc_red_est["z_puntos"])
+
+# LISA univariante de renta
+lisa_renta <- rgeoda::local_moran(pesos_geoda, 
+                          secciones_vlc_red_est["z_renta"])
+
+# LISA bivariante: puntos de venta ~ renta
+lisa_biv <- local_bimoran(pesos_geoda,
+                          secciones_vlc_red_est[c("z_puntos", "z_renta")])
+
+nb <- st_contiguity(secciones_vlc_red_est, queen = T)
+wt <- st_weights(nb, style = "W")
+
+moran_bivariante <- global_moran_bv(secciones_vlc_red_est$z_puntos,
+                                    secciones_vlc_red_est$z_renta,
+                                    wt = wt,
+                                    nb = nb)
+
+# Calcular el p-valor bidireccional a partir del objeto de permutaciones
+p_val_bi <- (sum(abs(moran_bivariante$t) >= abs(moran_bivariante$t0)) + 1) / (moran_bivariante$R + 1)
+
+# INDICE GLOBAL BIVARIANTE
+tabla1 <- kable(data.frame("Nº estancos y PVR" = c(moran_puntos$estimate[1], moran_puntos$p.value), "Renta media"  = c(moran_renta$estimate[1],moran_renta$p.value), "Bivariante" = c(moran_bivariante$t0,p_val_bi), row.names = c("Índice global I de Moran", "p-valor")))
+
+# Mapas
+lisa1 <- lisa_map(secciones_vlc_red_est, lisa_puntos) 
+lisa2 <- lisa_map(secciones_vlc_red_est, lisa_renta)
+
+
+#lisa12 <- tmap_arrange(lisa1, lisa2, ncol = 2)
+lisa1_noleg <- lisa1 + tm_layout(legend.show = FALSE, title = "Densidad de pts de \nventa de tabaco")
+lisa2_noleg <- lisa2 + tm_layout(legend.show = FALSE, title = "Renta neta media")
+
+# Extraer la leyenda de uno de ellos como elemento separado
+leyenda <- lisa2 + tm_layout(legend.only = TRUE)
+
+lisa12ex <- tmap_arrange(lisa1_noleg, lisa2_noleg, leyenda, 
+                       ncol = 3, widths = c(0.42, 0.42, 0.16))
+
+lisa3 <- lisa_map(secciones_vlc_red_est, lisa_biv)
+
+
+significancia1 <- significance_map(secciones_vlc_red_est, lisa_biv)
+
+lissig <- tmap_arrange(lisa3, significancia1)
+```
+
+```{r}
+##### ANÁLISIS CCAA #####
+
+provs <- esp_get_prov()
+ccaas <- esp_get_ccaa()
+
+# En defunciones, València no aparece formateado correctamente:
+
+defunciones$Provincia.de.residencia[defunciones$Provincia.de.residencia == "Valencia/Val\u008ancia"] <- "Valencia/València"
+
+# Además, para cruzar con mapSpain debemos quitar acentos a ambas tablas
+
+defunciones <- defunciones %>%
+  mutate(Provincia.de.residencia = stri_trans_general(
+    Provincia.de.residencia, "Latin-ASCII"
+  ))
+
+provs <- provs %>%
+  mutate(ine.prov.name = stri_trans_general(
+    ine.prov.name, "Latin-ASCII"
+  ))
+
+# Filtremos
+
+defunciones <- defunciones %>% 
+  filter(Causas..lista.reducida. %in% c(
+  "018 Tumor maligno de la tráquea, de los bronquios y del pulmón",
+  "017 Tumor maligno de la laringe",
+  "064 Enfermedades crónicas de las vías respiratorias inferiores (excepto asma)"
+)) %>% 
+  filter(Provincia.de.residencia != "Total" & Provincia.de.residencia != "Extranjero")
+
+# Crucemos
+
+defs <- defunciones %>% 
+  left_join(provs, by = c("Provincia.de.residencia" = "ine.prov.name"))
+
+# Agreguemos defunciones a CCAA
+
+defs <- defs %>% 
+  left_join(ccaas, by = "codauto") %>% 
+  group_by(codauto) %>% 
+  summarise(defunciones_tabaco = sum(Total, na.rm = TRUE))
+
+# Convertimos a muertes por cada 100.000 habitantes, para ello preparamos pob
+
+pob <- pob %>% 
+  filter(Comunidades.y.Ciudades.Autónomas != "") %>% 
+  filter(Sexo == "Total") %>% 
+  filter(Provincias == "") %>% 
+  filter(Periodo == 2023) %>% 
+  select(Comunidades.y.Ciudades.Autónomas, Total)
+
+pob <- pob %>% 
+  mutate(codauto = substr(Comunidades.y.Ciudades.Autónomas, 1, 2),
+         CCAA = substr(Comunidades.y.Ciudades.Autónomas, 4, NULL))
+
+# Calculamos muertes por cada 100.000 habitantes.
+defs <- defs %>%
+  left_join(pob, by = "codauto")
+
+defs$Total <- as.numeric(str_replace_all(defs$Total, "\\.", "") %>% 
+                       str_replace(",", "."))
+
+defs <- defs %>% 
+  mutate(muertes_rel = defunciones_tabaco / Total * 100000)
+  
+
+# Eliminamos columnas del total en ESdE y ajustamos nombres
+esde_cant <- esde_cant[3:21,-2]
+esde_tipos <- esde_tipos[3:21,-2]
+names(esde_cant)[1] <- "CCAA"
+names(esde_tipos)[1] <- "CCAA"
+
+
+# Cruzamos tablas
+
+esde <- inner_join(esde_cant, esde_tipos, by = "CCAA")
+
+# Estandarizamos Castilla la Mancha
+
+esde$CCAA[esde$CCAA == "Castilla-La Mancha"] <- "Castilla - La Mancha"
+
+
+defs_esde <- inner_join(defs, esde, by = "CCAA")
+
+# Pasamos los cigarros consumidos por diarios de chr a num
+
+defs_esde$`Entre 01 y 09 cigarrillos` <- as.numeric(defs_esde$`Entre 01 y 09 cigarrillos`)
+
+defs_esde$`Entre 10 y 19 cigarrillos` <- as.numeric(defs_esde$`Entre 10 y 19 cigarrillos`)
+
+defs_esde$`20 o más cigarrillos` <- as.numeric(defs_esde$`20 o más cigarrillos`)
+
+# Calculamos la media ponderada entre prevalencia (tipo de fumador) e intensidad (cigarrillos consumidos al día por fumadores diarios)
+defs_esde <- defs_esde %>%
+  mutate(
+    prevalencia = `Fumador diario` + `Fumador ocasional`,
+    # Intensidad: ponderamos por peso de cada tramo de cigarrillos
+    # Usamos punto medio aproximado de cada tramo: 5, 15, 25
+    intensidad = (`Entre 01 y 09 cigarrillos` * 5 +
+                  `Entre 10 y 19 cigarrillos` * 15 +
+                  `20 o más cigarrillos` * 25) / 100,
+    z_prev = scale(prevalencia)[,1],
+    z_inten = scale(intensidad)[,1],
+    idx_tabaquismo = (z_prev + z_inten) / 2
+  )
+
+defs_esde <- ccaas %>% 
+  inner_join(defs_esde, by = "codauto")
+
+```
+
+```{r}
+
+# Matriz de pesos espaciales (contigüidad queen)
+vecinos2 <- poly2nb(defs_esde, queen = TRUE)
+pesos2   <- nb2listw(vecinos2, style = "W", zero.policy = TRUE)
+
+# Comprobamos si hay secciones sin vecinos
+# summary(vecinos)
+
+# Estandarizar las variables
+defs_esde <- defs_esde %>%
+  mutate(
+    z_muertes = scale(muertes_rel)[,1]
+  )
+
+# Moran global univariante de defunciones
+moran_muertes <- moran.test(defs_esde$z_muertes, pesos2, zero.policy = TRUE)
+
+# Moran global univariante de tabaquismo
+moran_tab <- moran.test(defs_esde$idx_tabaquismo, pesos2, 
+                          na.action = na.omit, zero.policy = TRUE)
+```
+
+
+```{r}
+# Matriz de pesos espaciales con rgeoda
+pesos_geoda2 <- queen_weights(defs_esde)
+
+
+
+# LISA univariante de muertes por cada 100.000 habitantes
+lisa_muertes <- rgeoda::local_moran(pesos_geoda2, 
+                           defs_esde["muertes_rel"])
+
+# LISA univariante de tabaquismo
+lisa_tab <- rgeoda::local_moran(pesos_geoda2, 
+                          defs_esde["idx_tabaquismo"])
+
+# LISA bivariante: muertes ~ tabaquismo
+lisa_biv2 <- local_bimoran(pesos_geoda2,
+                          defs_esde[c("muertes_rel", "idx_tabaquismo")])
+
+nb2 <- st_contiguity(defs_esde, queen = T)
+
+tiene_vecinos <- which(sapply(nb2, length) > 1)
+defs_esde_cont <- defs_esde[tiene_vecinos, ]
+
+nb2 <- st_contiguity(defs_esde_cont, queen = T)
+
+wt2 <- st_weights(nb2, style = "W", allow_zero = T)
+
+moran_bivariante2 <- global_moran_bv(defs_esde_cont$muertes_rel,
+                                    defs_esde_cont$idx_tabaquismo,
+                                    wt = wt2,
+                                    nb = nb2)
+
+# Calcular el p-valor bidireccional a partir del objeto de permutaciones
+p_val_bi2 <- (sum(abs(moran_bivariante2$t) >= abs(moran_bivariante2$t0)) + 1) / (moran_bivariante2$R + 1)
+
+# INDICE GLOBAL BIVARIANTE
+tabla2 <- kable(data.frame("Idx.defunciones.pulmonares" = c(moran_muertes$estimate[1], moran_muertes$p.value), "Idx tabaquismo"  = c(moran_tab$estimate[1],moran_tab$p.value), "Bivariante" = c(moran_bivariante2$t0,p_val_bi2), row.names = c("Índice global I de Moran", "p-valor")))
+
+# Mapas
+lisa3 <- lisa_map(defs_esde, lisa_muertes) 
+lisa4 <- lisa_map(defs_esde, lisa_tab)
+
+
+#lisa34 <- tmap_arrange(lisa3, lisa4, ncol = 2)
+lisa3_noleg <- lisa3 + tm_layout(legend.show = FALSE, title = "Muertes pulmonares \n/ 10000 hab.")
+lisa4_noleg <- lisa4 + tm_layout(legend.show = FALSE, title = "Índice tabaquismo")
+
+lisa34ex <- tmap_arrange(lisa3_noleg, lisa4_noleg, leyenda, 
+                       ncol = 3, widths = c(0.42, 0.42, 0.16))
+
+lisa5 <- lisa_map(defs_esde, lisa_biv2)
+
+
+significancia2 <- significance_map(defs_esde, lisa_biv2)
+
+lissig2 <- tmap_arrange(lisa5, significancia2)
+```
+
+
+```{r}
+# graf1
+
+# **Figura 1** *Distribución de estancos y PVR en España.*
+
+```
+
+```{r}
+graf2
+
+```
+
+
+**Figura 1.** *Análsis de la densidad de puntos de venta de tabaco y renta censal en Valencia, excepto el distrito 19 (l'Albufera)*.
+
+*(Se puede consultar el análisis univariante de la densidad de puntos de venta y de la renta por sección censal valenciana (excepto distrito 19) en el [ANEXO IV](https://github.com/Bombarderx/DEE---Trabajo-Final))*
+
+\newpage
+
+```{r}
+tabla1
+```
+
+**Tabla 1.** *Contraste univariante y bivariante de cantidad de puntos de venta de tabaco y renta por sección censal de la ciudad de Valencia, excepto distrito 19.*
+
+```{r}
+# lisa12ex
+
+# **Figura 3.** *Mapas LISAs univariantes del nº de puntos de venta de tabaco (izquierda) y renta por sección censal valenciana (derecha), excepto el distrito 19.*
+```
+
+
+
+```{r}
+lissig
+```
+
+**Figura 2.** *Mapa LISA bivarainte y mapa de significatividad del nº de puntos de venta de tabaco y renta por sección censal valenciana, excepto el distrito 19.*
+ 
+*(Se puede consultar el análisis univariante de la densidad de puntos de venta y de la renta por sección censal valenciana (excepto distrito 19) en el* **[ANEXO V](https://github.com/Bombarderx/DEE---Trabajo-Final))**
+
+ 
+\newpage 
+ 
+ 
+```{r}
+# lisa34ex
+# **Figura 5.** *Mapas LISAs univariantes del nº de defunciones por enfermedades pulmonares y tabaquismo en España*
+```
+
+```{r}
+tabla2
+```
+ **Tabla 2.** *Contraste univariante y bivariante de defunciones por enfermedades pulmonares y tabaquismo en España*
+
+```{r}
+lissig2
+```
+
+**Figura 3.** *Mapa LISA bivarainte y mapa de defunciones por enfermedades pulmonares y tabaquismo en España*
+ 
+*(Se puede consultar el análisis univariante de la densidad de defunciones por enfermedades relacionadas con el tabaquismo y el propio tabaquismo por CCAA española en el* **[ANEXO V](https://github.com/Bombarderx/DEE---Trabajo-Final))**
+ 
+```{r}
+# Guardamos resultados
+save(defs_esde, secciones_vlc_red_est, graf1, graf2, tabla1, lisa12ex, lissig, tabla2, lisa34ex, lissig2, file = "./data/outputs_finales.Rdata")
+```
+ 
+\newpage
+ 
+## Conclusiones
+
+Los resultados obtenidos permiten constatar que la distribución espacial del tabaquismo en España presenta patrones geográficos reconocibles a escala autonómica, si bien estos no se traducen de forma directa en una correlación estadística robusta con la mortalidad a nivel agregado. Tal como se detalla en la Tabla 2, el análisis bivariante no detecta una relación espacial significativa entre el consumo de tabaco y la mortalidad por enfermedades pulmonares (I = -0,18; p = 0,15), lo que sugiere que el fenómeno responde a una etiología multifactorial donde el tabaquismo es solo una variable entre muchas otras, incluyendo factores ambientales y ocupacionales que no han sido controlados en este estudio.
+
+Esta ausencia de significación estadística debe interpretarse bajo el prisma de dos limitaciones fundamentales. Primero, el desfase temporal es crítico: la mortalidad pulmonar es un indicador de "cola larga", resultado de una exposición acumulada a lo largo de décadas, mientras que el índice de tabaquismo analizado refleja una prevalencia transversal contemporánea (Córdoba-García et al., 2020). Segundo, como han señalado Almeida et al. (2020) en su estudio sobre la autocorrelación espacial del consumo en España, la escala autonómica sufre de la falacia ecológica; al agregar datos, se enmascaran las desigualdades intra-regionales que son, precisamente, donde reside la mayor variabilidad del hábito.
+
+Al descender a una escala urbana en Valencia, la comparación con la literatura internacional revela diferencias estructurales de gran calado. Mientras que Shortt et al. (2015) hallaron en Escocia una relación lineal positiva entre la privación socioeconómica y la densidad de puntos de venta, el caso de Valencia, tal y como muestra la Figura 1, arroja un índice global de Moran muy débil (I = 0,024). Esta divergencia tiene una explicación sistémica: el sistema de venta de tabaco en España es altamente saturado. A diferencia de otros contextos europeos con regulaciones más restrictivas, la combinación de estancos y la extensa red de Puntos de Venta con Recargo (PVR) en hostelería y quioscos garantiza una accesibilidad casi universal al producto, independientemente del nivel de renta del barrio. Esta "saturación de mercado" actúa como un ecualizador geográfico que diluye la posible relación entre privación económica y densidad de puntos de venta, un factor que la revisión sistemática de Lee et al. (2021) identifica como clave para entender las disparidades en el acceso al tabaco.
+
+En definitiva, este trabajo evidencia que la distribución del tabaquismo no sigue un patrón de segregación espacial simplista. Futuras investigaciones deberán avanzar hacia un análisis granular, utilizando datos de mortalidad a nivel municipal e incorporando variables longitudinales que permitan corregir el desfase temporal de los efectos en salud, además de considerar otros efectos sociodemográficos que contribuyan al tabaquismo. Asimismo, contrastar este modelo de "accesibilidad universal" español con otros modelos europeos más restrictivos permitiría determinar si la actual política de puntos de venta está, paradójicamente, neutralizando las diferencias de acceso por renta que sí se observan en otros países. 
+
+Ya fuera de los objetivos iniciales del trabajo, sería interesante analizar el patrón espacial de la renta media censal valenciana y la intensidad y prevalencia del tabaquismo a nivel autonómico, ya que como indican las Tablas 1 y 2, respectivamente, ambas variables han resultado tener una autocorrelación espacial positiva fuerte, con un valor *p* que demuestra alta significatividad estadística.
+
+\newpage
+
+## Referencias
+
+- Almeida, S., Vidal, C., & Santiago, P. (2020). *Spatial distribution and spatial autocorrelation of tobacco consumption in Spain. Public Health,* 185, 237-243. https://www.sciencedirect.com/science/article/abs/pii/S003335062030278X
+
+- Córdoba-García, R., Peruga, A., & Galán, I. (2020). *Mortalidad atribuible al consumo de tabaco en España en 2016. Archivos de Bronconeumología,* 56(9), 559-566. https://www.sciencedirect.com/science/article/abs/pii/S0300289619305964
+
+- Lee, J. G. L., Landrine, H., Torres, E., & Icon, O. (2021). *Socioeconomic and racial/ethnic disparities in tobacco retail outlets: A systematic review. Nicotine & Tobacco Research,* 23(8), 1263-1273. https://academic.oup.com/ntr/article-abstract/23/8/1263/5957272
+
+- Pérez-Ríos, M., Schiaffino, A., & Montes, A. (2020). *Mortalidad atribuida al consumo de tabaco en España por comunidades autónomas, 2017.* Revista Española de Cardiología, 73(12), 1036-1044. https://www.revespcardiol.org/es-mortalidad-atribuida-al-consumo-tabaco-articulo-S0300893220306436
+
+- Shortt, N. K., Tisch, C., Pearce, J., Mitchell, R., Richardson, E. A., Hill, S., & Amos, A. (2015). *The density of tobacco retail outlets in Scotland: Is it associated with socio-economic deprivation?.* BMC Public Health, 15(1), 1-9. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4595054/
+
+\newpage
+
+## Anexos
+
+Los anexos se pueden consultar y descargar [en el repositorio de github](https://github.com/Bombarderx/DEE---Trabajo-Final).
