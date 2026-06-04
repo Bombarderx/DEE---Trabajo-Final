@@ -10,4 +10,4 @@ Trabajo final de la asignatua de Datos Espaciales y Espaciotemporales, del terce
 - PROYECTO_FINAL.pdf: Documento final de la asignatura
 - PROYECTO_FINAL.Rmd: Script utilizado para la renderización de PROYECTO_FINAL.pdf
 - PROYECTO_FINAL - EXPOSICIÓN.pdf: Presentación en formato .pdf para la exposición del 05-06-2026
-- - PROYECTO_FINAL - EXPOSICIÓN.pptx: Presentación en formato .pptx para la exposición del 05-06-2026
+- PROYECTO_FINAL - EXPOSICIÓN.pptx: Presentación en formato .pptx para la exposición del 05-06-2026
